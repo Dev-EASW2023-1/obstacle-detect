@@ -79,6 +79,15 @@ app.get('/analyze/:imageName', async (req, res) => {
 		});
 	  });
 	});
+
+	const maxDimension = 1000;
+  if (image.bitmap.width > maxDimension || image.bitmap.height > maxDimension) {
+    if (image.bitmap.width > image.bitmap.height)
+      image = image.resize(maxDimension, Jimp.AUTO);
+    else 
+      image = image.resize(Jimp.AUTO, maxDimension);
+  }
+
 	const buffer = await image.getBufferAsync(Jimp.MIME_PNG);
 	res.set('Content-Type', 'image/png');
 	res.send(buffer);
