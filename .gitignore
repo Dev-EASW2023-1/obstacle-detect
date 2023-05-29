@@ -119,3 +119,6 @@ npm-debug.log*
 
 # Api Service Key
 .env
+
+#image tmp file
+uploads/*
