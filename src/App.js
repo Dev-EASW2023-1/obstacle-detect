@@ -56,27 +56,36 @@ app.get('/analyze/:imageName', async (req, res) => {
 		const y1 = Math.floor(box.Top * height);
 		const boxWidth = Math.floor(box.Width * width);
 		const boxHeight = Math.floor(box.Height * height);
-  
-		image.scan(x1, y1, boxWidth, borderThickness, function (x, y, idx) { // Top
-		  this.bitmap.data[idx] = 255; // R
-		  this.bitmap.data[idx + 1] = 0; // G
-		  this.bitmap.data[idx + 2] = 0; // B
-		});
-		image.scan(x1, y1, borderThickness, boxHeight, function (x, y, idx) { // Left
-		  this.bitmap.data[idx] = 255; // R
-		  this.bitmap.data[idx + 1] = 0; // G
-		  this.bitmap.data[idx + 2] = 0; // B
-		});
-		image.scan(x1, y1 + boxHeight - borderThickness, boxWidth, borderThickness, function (x, y, idx) { // Bottom
-		  this.bitmap.data[idx] = 255; // R
-		  this.bitmap.data[idx + 1] = 0; // G
-		  this.bitmap.data[idx + 2] = 0; // B
-		});
-		image.scan(x1 + boxWidth - borderThickness, y1, borderThickness, boxHeight, function (x, y, idx) { // Right
-		  this.bitmap.data[idx] = 255; // R
-		  this.bitmap.data[idx + 1] = 0; // G
-		  this.bitmap.data[idx + 2] = 0; // B
-		});
+
+		const centerX = x1 + boxWidth / 2;
+    	const centerY = y1 + boxHeight / 2;
+
+		const centerXRange = [width * 0.25, width * 0.75];
+    	const centerYRange = [height * 0.25, height * 0.75];
+
+		if (centerX >= centerXRange[0] && centerX <= centerXRange[1] &&
+			centerY >= centerYRange[0] && centerY <= centerYRange[1]) {
+			image.scan(x1, y1, boxWidth, borderThickness, function (x, y, idx) { // Top
+			  this.bitmap.data[idx] = 255; // R
+			  this.bitmap.data[idx + 1] = 0; // G
+			  this.bitmap.data[idx + 2] = 0; // B
+			});
+			image.scan(x1, y1, borderThickness, boxHeight, function (x, y, idx) { // Left
+			  this.bitmap.data[idx] = 255; // R
+			  this.bitmap.data[idx + 1] = 0; // G
+			  this.bitmap.data[idx + 2] = 0; // B
+			});
+			image.scan(x1, y1 + boxHeight - borderThickness, boxWidth, borderThickness, function (x, y, idx) { // Bottom
+			  this.bitmap.data[idx] = 255; // R
+			  this.bitmap.data[idx + 1] = 0; // G
+			  this.bitmap.data[idx + 2] = 0; // B
+			});
+			image.scan(x1 + boxWidth - borderThickness, y1, borderThickness, boxHeight, function (x, y, idx) { // Right
+			  this.bitmap.data[idx] = 255; // R
+			  this.bitmap.data[idx + 1] = 0; // G
+			  this.bitmap.data[idx + 2] = 0; // B
+			});
+		}
 	  });
 	});
 
