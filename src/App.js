@@ -35,7 +35,12 @@ app.post('/upload', upload.single('image'), async (req, res) => {
 	}
   });
 
-  const drawBoundingBox = (image, x1, y1, boxWidth, boxHeight, borderThickness) => {
+let font;
+Jimp.loadFont(Jimp.FONT_SANS_32_BLACK).then(loadedFont => {
+  font = loadedFont;
+});
+
+const drawBoundingBox = (image, x1, y1, boxWidth, boxHeight, borderThickness, label, confidence, showObjects) => {
 
 	image.scan(x1, y1, boxWidth, borderThickness, function (x, y, idx) { // Top
 		this.bitmap.data[idx] = 255; // R
@@ -57,10 +62,36 @@ app.post('/upload', upload.single('image'), async (req, res) => {
 		this.bitmap.data[idx + 1] = 0; // G
 		this.bitmap.data[idx + 2] = 0; // B
 	  });
+
+	if(showObjects)
+	{
+		const fontSize = 32;  // Choose a font size that is appropriate.
+	    const padding = 2;  // Some padding around the text.
+	    const backgroundHeight = fontSize * 2 + padding * 2;  // Accommodate two lines of text.
+	    const textY = y1 + boxHeight - backgroundHeight - 10;  // Move the text to the bottom of the box.
+
+	    // Estimate the width of the text based on the font size and the length of the text.
+	    const textLabelWidth = label.length * fontSize * 0.6;  // This is a rough estimation.
+	    const textConfidenceWidth = confidence.toFixed(2).length * fontSize * 0.6;  // This is a rough estimation.
+	    const backgroundWidth = Math.max(textLabelWidth, textConfidenceWidth) + padding * 2;  // The width of the background should be the width of the longest text.
+
+	    // Draw a white rectangle for the text background.
+	    image.scan(x1 + 10, textY, backgroundWidth, backgroundHeight, function (x, y, idx) {
+	        this.bitmap.data[idx] = 255;  // R
+	        this.bitmap.data[idx + 1] = 255;  // G
+	        this.bitmap.data[idx + 2] = 255;  // B
+	        this.bitmap.data[idx + 3] = 255;  // Alpha, for transparency. This may not be necessary for your use case.
+	    });
+
+	    // Print the label and confidence on separate lines.
+	    image.print(font, x1 + 10 + padding, textY + padding, label);
+	    image.print(font, x1 + 10 + padding, textY + fontSize + padding, confidence.toFixed(2));
+	}
   };
 
 app.get('/analyze/:imageName', async (req, res) => {
 	try {
+		const showObjects = req.query.showObjects === 'true';
 		const params = {
 		  Image: {
 			S3Object: {
@@ -71,6 +102,7 @@ app.get('/analyze/:imageName', async (req, res) => {
 		  MaxLabels: 10
 		};
 		const data = await rekognition.detectLabels(params).promise();
+		console.log(data); ////////////////////////////////////////////////////////////////// response test print
 		let image = await Jimp.read(
 		  `https://${process.env.AWS_S3_BUCKET_NAME}.s3.amazonaws.com/${params.Image.S3Object.Name}`
 		);
@@ -93,7 +125,8 @@ app.get('/analyze/:imageName', async (req, res) => {
 
 			if (centerX >= centerXRange[0] && centerX <= centerXRange[1] &&
 				centerY >= centerYRange[0] && centerY <= centerYRange[1]) 
-				drawBoundingBox(image, x1, y1, boxWidth, boxHeight, parseInt(process.env.BORDER_THICKNESS));
+				drawBoundingBox(image, x1, y1, boxWidth, boxHeight, parseInt(process.env.BORDER_THICKNESS),label.Name, label.Confidence, showObjects);
+					
 		  });
 		});
 
