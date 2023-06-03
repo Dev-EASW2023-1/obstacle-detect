@@ -5,24 +5,42 @@
     <link rel="stylesheet" type="text/css" href="styles.css">
 </head>
 <body>
-    <div><h1>Image Analysis</h1>
-    <form action="/upload" method="post" enctype="multipart/form-data">
-        <label for="image" class="file-input">Select Image</label>
-        <input type="file" id="image" name="image" accept="image/*" required>
-        <input type="submit" value="Upload Image">
-        <div>
-            <input type="checkbox" id="showObjects" name="showObjects" checked>
-            <label for="showObjects">Show detected objects</label>
+    <div class="content">
+        <h1>Image Analysis</h1>
+        <form action="/upload" method="post" enctype="multipart/form-data">
+            <div class="file-upload">
+                <label for="image" class="file-input">Select Image</label>
+                <span id="file-name">No file chosen</span>
+                <input type="file" id="image" name="image" accept="image/*" required>
+                <input type="submit" value="Analyze">
+            </div>
+            <div class="checkbox">
+                <input type="checkbox" id="showObjects" name="showObjects">
+                <label for="showObjects">객체 속성 표시</label>
+            </div>
+        </form>
+        <div id="result-box">
+            <div id="loading-spinner"></div>
+            <div id="result"></div>
         </div>
-    </form>
-    <br>
-    <div id="result"></div>
-
+    </div>
     <script>
+        const fileInput = document.querySelector('#image');
+        const selectedFileName = document.querySelector('#file-name');
+        const loadingSpinner = document.querySelector('#loading-spinner');
+        const resultDiv = document.querySelector('#result');
+
+        fileInput.addEventListener('change', (event) => {
+            selectedFileName.textContent = event.target.files[0].name;
+        });
+
         document.querySelector('form').addEventListener('submit', (event) => {
             event.preventDefault();
             const formData = new FormData(event.target);
             const showObjects = document.querySelector('#showObjects').checked;
+
+            resultDiv.innerHTML = '';
+            loadingSpinner.style.display = 'block';
 
             fetch('/upload', {
                 method: 'POST',
@@ -32,19 +50,18 @@
             .then(data => {
                 const imageName = data.imageName;
 
-            fetch(`/analyze/${imageName}?showObjects=${showObjects}`)
-            .then(response => response.blob())
-            .then(blob => {
-            const img = new Image();
-            img.onload = () => {
-              URL.revokeObjectURL(img.src);
-            };
-            img.src = URL.createObjectURL(blob);
+                fetch(`/analyze/${imageName}?showObjects=${showObjects}`)
+                .then(response => response.blob())
+                .then(blob => {
+                    const img = new Image();
+                    img.onload = () => {
+                        URL.revokeObjectURL(img.src);
+                        loadingSpinner.style.display = 'none';
+                    };
+                    img.src = URL.createObjectURL(blob);
 
-            const resultDiv = document.querySelector('#result');
-            resultDiv.innerHTML = '';
-            resultDiv.appendChild(img);
-        });
+                    resultDiv.appendChild(img);
+                });
             });
         });
     </script>
