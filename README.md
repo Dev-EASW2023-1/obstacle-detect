@@ -14,5 +14,12 @@ Amazon Rekognition - object detection api를 활용한 이미지 분석
 
 ## 💻 How to Run
 ```
-- 작성 예정
+- clone repo
+    git clone https://github.com/mk3058/CBNU-OpenSource-Project2
+- install dependencies
+    npm i
+- run
+    node ./src/App.js
+    
+ * Before start, You must fill out "AWS Secret" fields in the .env file.
 ```
