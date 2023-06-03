@@ -30,22 +30,30 @@ const createS3Params = (fileName, fileContent) => {
 };
 
 app.post('/upload', upload.single('image'), async (req, res) => {
-	try {
-		const fileContent = fs.readFileSync(req.file.path);
-		const params = createS3Params(req.file.originalname, fileContent);
-		await s3.upload(params).promise();
+    try {
+        fs.readFile(req.file.path, async (err, fileContent) => {
+            if (err) {
+                console.error(`Error reading file: ${err}`);
+                res.status(500).send('Error reading file');
+            } else {
+                const params = createS3Params(req.file.originalname, fileContent);
+                await s3.upload(params).promise();
 
-		fs.unlink(req.file.path, err => {
-			if (err)
-				console.error(`Error deleting file: ${err}`);
-		});
+                fs.unlink(req.file.path, (err) => {
+                    if (err) 
+                        console.error(`Error deleting file: ${err}`);
+                });
 
-		res.json({ imageName: req.file.originalname });
-	} catch (error) {
-		console.error(`Error in /upload: ${error}`);
-		res.status(500).send('Error uploading image');
-	}
+                res.json({ imageName: req.file.originalname });
+            }
+        });
+    } catch (error) {
+        fs.unlink(req.file.path, (err) => {});
+        console.error(`Error in /upload: ${error}`);
+        res.status(500).send('Error uploading image');
+    }
 });
+
 
 
 // Rekognition utilities
