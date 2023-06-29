@@ -5,6 +5,7 @@ const multer = require('multer');
 const AWS = require('aws-sdk');
 const Jimp = require('jimp');
 const fs = require('fs');
+const e = require('express');
 
 const app = express();
 const s3 = new AWS.S3();
@@ -29,28 +30,35 @@ const createS3Params = (fileName, fileContent) => {
 	};
 };
 
+// after analying image, store labelName in this variable
+let labelName = undefined;
+
 app.post('/upload', upload.single('image'), async (req, res) => {
     try {
-        fs.readFile(req.file.path, async (err, fileContent) => {
-            if (err) {
-                console.error(`Error reading file: ${err}`);
-                res.status(500).send('Error reading file');
-            } else {
-                const params = createS3Params(req.file.originalname, fileContent);
-                await s3.upload(params).promise();
-
-                fs.unlink(req.file.path, (err) => {
-                    if (err) 
-                        console.error(`Error deleting file: ${err}`);
-                });
-
-                res.json({ imageName: req.file.originalname });
-            }
-        });
+        if(req.file !== undefined){
+            fs.readFile(req.file.path, async (err, fileContent) => {
+                if (err) {
+                    console.error(`Error reading file: ${err}`);
+                    res.status(500).json({ error:'Error reading file'});
+                } else {
+                    const params = createS3Params(req.file.originalname, fileContent);
+                    await s3.upload(params).promise();
+    
+                    fs.unlink(req.file.path, (err) => {
+                        if (err) 
+                            console.error(`Error deleting file: ${err}`);
+                    });
+    
+                    res.json({ imageName: req.file.originalname,  message: 'success'});
+                }
+            });
+        } else {
+            res.status(500).json({ error:'No files chosen'});
+        }
     } catch (error) {
         fs.unlink(req.file.path, (err) => {});
         console.error(`Error in /upload: ${error}`);
-        res.status(500).send('Error uploading image');
+        res.status(500).json({ error:'Error uploading image'});
     }
 });
 
@@ -74,6 +82,25 @@ app.get('/analyze/:imageName', async (req, res) => {
 		const showObjects = req.query.showObjects === 'true';
 		const params = createRekognitionParams(req.params.imageName);
 		const data = await rekognition.detectLabels(params).promise();
+        let array = [];
+
+        // Adding the size of the label's BoundingBox to Array is to compare comparing the size of the label's BoundingBox.
+        data.Labels.forEach((label) => {
+            if(label.Instances.length > 0){
+                label.Instances.forEach((instance) => {
+                    array.push({"name" : `${label.Name}`, "size" : `${instance.BoundingBox.Width + instance.BoundingBox.Height}`});
+                });
+            }
+        }); 
+
+        // find max size label
+        const importantLabel  = array.reduce((acc, cur) => {
+            return acc.size > cur.size ? acc : cur;
+        });
+
+        labelName = `전방에 ${importantLabel.name} 있습니다.`;
+        console.log(array);
+
 		const image = await Jimp.read(
 		  `https://${process.env.AWS_S3_BUCKET_NAME}.s3.amazonaws.com/${params.Image.S3Object.Name}`
 		);
@@ -86,8 +113,51 @@ app.get('/analyze/:imageName', async (req, res) => {
 		res.send(buffer);
 	} catch (error) {
 		console.error(`Error in /analyze: ${error}`);
-    	res.status(500).send('Error analyzing image');
+    	res.status(500).json({ error:'Error analyzing image'});
 	}
+});
+
+app.get('/tts', function (req, res) {
+    if(labelName !== undefined) {
+        const api_url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${process.env.GOOGLE_TTS_API_KEY}`;
+        const data = {
+            input: {
+                text: labelName
+            },
+            voice: {
+                languageCode: "ko-KR",
+                name: "ko-KR-Neural2-c",
+                ssmlGender: "MALE"
+            },
+            audioConfig: {
+                audioEncoding: "MP3"
+            },
+        };
+        const options = {
+            headers: {
+                "content-type": "application/json; charset=UTF-8",
+            },
+            body: JSON.stringify(data),
+            method: "POST"
+        };
+        fetch(api_url, options)
+        .then((response) => {
+            if (!response.ok) {
+                console.log(response);
+                throw new Error("Error with Text to Speech conversion");
+            } 
+            response.json().then((data) => {
+                const audioContent = data.audioContent; // base64
+                const audioBuffer = Buffer.from(audioContent, "base64");
+                console.log("오디오 변환 성공");
+                res.send(audioBuffer);
+            });
+        })
+        .catch((error) => {
+            console.error(`Error in /tts: ${error}`);
+            res.status(500).json({ error:'Error converting text to speech'});
+        });
+    }
 });
 
 // Image manipulation utilities

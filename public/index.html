@@ -6,12 +6,24 @@
 </head>
 <body>
     <div class="content">
+        <div id="video-box">
+            <canvas id="photo"></canvas>
+            <video autoplay="true" id="player"></video>
+            <div id="camera"></div>
+            <div id="videoList"></div>
+            <canvas id="capture" style="position: relative; border: 1px solid #000;"></canvas>
+            <div class="controls">
+                <button id="button" onClick="takePhoto()">Take Photo</button>
+            </div>
+        </div>
+
         <h1>Image Analysis</h1>
-        <form action="/upload" method="post" enctype="multipart/form-data">
+
+        <form id="formId" action="/upload" method="post" enctype="multipart/form-data">
             <div class="file-upload">
                 <label for="image" class="file-input">Select Image</label>
                 <span id="file-name">No file chosen</span>
-                <input type="file" id="image" name="image" accept="image/*" required>
+                <input type="file" id="image" name="image" accept="image/*" onchange="removeUploadedImage()">
                 <input type="submit" value="Analyze">
             </div>
             <div class="checkbox">
@@ -19,16 +31,139 @@
                 <label for="showObjects">객체 속성 표시</label>
             </div>
         </form>
+
         <div id="result-box">
             <div id="loading-spinner"></div>
             <div id="result"></div>
         </div>
     </div>
     <script>
+        const cameraExist = document.querySelector('#camera');
         const fileInput = document.querySelector('#image');
         const selectedFileName = document.querySelector('#file-name');
         const loadingSpinner = document.querySelector('#loading-spinner');
         const resultDiv = document.querySelector('#result');
+
+        const video = document.querySelector('#player');
+        const canvas = document.querySelector('#photo');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const capture = document.querySelector('#capture');
+        const captureCtx = capture.getContext('2d', { willReadFrequently: true });
+
+        // Declare mutable variable named "image"
+        let imageOrigin = undefined;
+
+        // get video piped into the video element
+        function getVideo() {
+            // getUserMedia() returns Promise
+            navigator.mediaDevices.getUserMedia({video: true, audio: false})
+                .then(localMediaStream => {
+                    console.log(localMediaStream);
+                    // localMediaStream should be in a form of URL to make video work
+                    // URL-form localMediaStream can be checked at video tag's src attribute
+                    video.srcObject = localMediaStream;
+                    // without play(), only snapshots of the video are shown
+                    video.play();
+                    video.style.display = 'none';
+                    cameraExist.innerHTML = '';
+                })
+                .catch(err => {
+                    console.error(`OH NO!`, err);
+                    cameraExist.innerHTML = `<p>Camera is not available.</p>`;
+                });
+        }
+
+        // after taking photo, remove the image from formData
+        function removeUploadedImage() {
+            imageOrigin = undefined;
+        }
+
+        // make webcam image bigger and look like video
+        function paintToCanvas() {
+            const width = video.videoWidth;
+            const height = video.videoHeight;
+
+            canvas.width = width;
+            canvas.height = height;
+            canvas.style.display = 'none';
+
+            // take webcam images into canvas by every 16ms (about 60 fps)
+            // returning it makes it re-accessible when it has to be stopped
+            return setInterval(() => {
+                // draw image of 'video' from top-left corner of canvas
+                ctx.drawImage(video, 0, 0, width, height);
+            }, 16);
+
+        }
+        
+        // when button is clicked, take photo
+        function takePhoto() {
+            capture.width = canvas.width;
+            capture.height = canvas.height;
+
+            let formData = new FormData(document.getElementById("formId"));
+            let imgDataUrl = canvas.toDataURL('image/jpeg');
+
+            const image = new Image();
+            image.src = imgDataUrl;
+            image.onload = function() {
+                captureCtx.drawImage(image, 0, 0, capture.width, canvas.height);
+                const file = dataURItoFile(imgDataUrl);
+                selectedFileName.textContent = file.name;
+                imageOrigin = file;
+            }
+        }
+
+        function dataURItoFile(dataURI) {
+            let binary = window.atob(dataURI.split(',')[1]);
+            let array = [];
+            let fileName = fnRandomString(6);
+
+            for(let i = 0; i < binary.length; i++) {
+                array.push(binary.charCodeAt(i));
+            }
+
+            return new File([new Uint8Array(array)], `${fileName}.jpg`, {type: 'image/jpeg'});
+        }
+
+        function fnRandomString(num) {
+            const characters ='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let result= '';
+            const charactersLength = characters.length;
+            for (let i=0; i<num; i++) {
+                result += characters.charAt(Math.floor(Math.random()*charactersLength));
+            }
+            return result;
+        }
+
+        // when video is played, video emits 'canplay' event
+        // here, 'canplay' event is emitted when webcam is turned on
+        video.addEventListener('canplay', paintToCanvas);
+
+        getVideo();
+
+        // when device is changed, changeDevice() is called
+        navigator.mediaDevices.ondevicechange = (event) => {
+            changeDevice();
+            console.log(event);
+        };
+
+        function changeDevice() {
+            navigator.mediaDevices.enumerateDevices().then((devices) => {
+                devices.forEach((device) => {
+                    const [kind, type, direction] = device.kind.match(/(\w+)(input|output)/i);
+                    const regex = /usb/gi;
+                    const deviceName = regex.test(device.label);
+
+                    if (type === "video" && deviceName) {
+                        cameraExist.innerHTML = '';
+                        getVideo();
+                    } else {
+                        cameraExist.innerHTML = `<p>Camera is not available.</p>`;
+                    }
+                });
+            });
+        }
 
         fileInput.addEventListener('change', (event) => {
             selectedFileName.textContent = event.target.files[0].name;
@@ -36,34 +171,113 @@
 
         document.querySelector('form').addEventListener('submit', (event) => {
             event.preventDefault();
+            console.log(event.target);
             const formData = new FormData(event.target);
             const showObjects = document.querySelector('#showObjects').checked;
-
+            
             resultDiv.innerHTML = '';
             loadingSpinner.style.display = 'block';
 
+            // insert the captured image to formData
+            if(imageOrigin !== undefined) {
+                formData.set('image', imageOrigin);
+            }
+            
             fetch('/upload', {
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.json())
-            .then(data => {
-                const imageName = data.imageName;
-
-                fetch(`/analyze/${imageName}?showObjects=${showObjects}`)
-                .then(response => response.blob())
-                .then(blob => {
-                    const img = new Image();
-                    img.onload = () => {
-                        URL.revokeObjectURL(img.src);
-                        loadingSpinner.style.display = 'none';
-                    };
-                    img.src = URL.createObjectURL(blob);
-
-                    resultDiv.appendChild(img);
+            .then(response => {
+                if (!response.ok) {
+                    console.log(response);
+                    throw new Error(response.statusText);
+                }
+                response.json().then(data => {
+                    const imageName = data.imageName;
+                    analyzeApi(imageName, showObjects);
                 });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                loadingSpinner.style.display = 'none';
+                alert("No image file selected");
             });
         });
+
+
+        function analyzeApi(imageName, showObjects){
+            fetch(`/analyze/${imageName}?showObjects=${showObjects}`)
+            .then(response => {
+                if (!response.ok) {
+                    console.log(response);
+                    throw new Error(response.statusText);
+                }
+                response.blob().then(blob => {
+                    analyzeImage(blob);
+                    ttsApi();
+                });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `<p>Failed to analyze image: ${imageName}</p>`;
+                loadingSpinner.style.display = 'none';
+            });
+        }
+
+        function ttsApi(){
+            fetch('/tts')
+            .then(response => {
+                if (!response.ok) {
+                    console.log(response);
+                    throw new Error(response.statusText);
+                }
+                response.arrayBuffer().then(arrayBuffer => {
+                    const audioContent = arrayBufferToString(arrayBuffer);
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const source = audioContext.createBufferSource();
+                    const audioData = base64ToArrayBuffer(audioContent);
+                    audioContext.decodeAudioData(audioData, function (buffer) {
+                        source.buffer = buffer;
+                        source.connect(audioContext.destination);
+                        source.start(0);
+                    });
+                });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+        function analyzeImage(blob) {
+            const img = new Image();
+            img.onload = () => {
+                URL.revokeObjectURL(img.src);
+                loadingSpinner.style.display = 'none';
+            };
+            img.src = URL.createObjectURL(blob);
+
+            resultDiv.appendChild(img);
+        }
+
+        // translate base64 string to ArrayBuffer
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function arrayBufferToString(arrayBuffer) {
+            const byteArray = new Uint8Array(arrayBuffer);
+            let byteString = '';
+            for (let i = 0; i < byteArray.length; i++) {
+                byteString += String.fromCharCode(byteArray[i]);
+            }
+            return btoa(byteString);
+        }
     </script>
 </body>
 </html>
