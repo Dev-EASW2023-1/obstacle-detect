@@ -50,6 +50,21 @@
         const capture = document.querySelector('#capture');
         const captureCtx = capture.getContext('2d', { willReadFrequently: true });
 
+        // Auto analysis each 10 seconds
+        window.onload = function () {
+            setInterval(function () {
+                takePhoto()
+                    .then((file) => {
+                        setTimeout(() => {
+                            submitForm(file);
+                        }, 1000);
+                    })
+                    .catch((error) => {
+                        console.error(error);
+                    });
+            }, 10000);
+      };
+
         // Declare mutable variable named "image"
         let imageOrigin = undefined;
 
@@ -98,20 +113,29 @@
         
         // when button is clicked, take photo
         function takePhoto() {
-            capture.width = canvas.width;
-            capture.height = canvas.height;
+            return new Promise((resolve, reject) => {
+                try {
+                    capture.width = canvas.width;
+                    capture.height = canvas.height;
 
-            let formData = new FormData(document.getElementById("formId"));
-            let imgDataUrl = canvas.toDataURL('image/jpeg');
+                    let formData = new FormData(document.getElementById("formId"));
+                    let imgDataUrl = canvas.toDataURL('image/jpeg');
 
-            const image = new Image();
-            image.src = imgDataUrl;
-            image.onload = function() {
-                captureCtx.drawImage(image, 0, 0, capture.width, canvas.height);
-                const file = dataURItoFile(imgDataUrl);
-                selectedFileName.textContent = file.name;
-                imageOrigin = file;
-            }
+                    const image = new Image();
+                    image.src = imgDataUrl;
+                    image.onload = function() {
+                        captureCtx.drawImage(image, 0, 0, capture.width, canvas.height);
+                        const file = dataURItoFile(imgDataUrl);
+                        selectedFileName.textContent = file.name;
+                        imageOrigin = file;
+                        resolve(file); // 성공 시 Promise를 이용하여 결과 반환
+                    }
+                } catch (error) {
+                    // 에러 처리
+                    console.error("Transform file error");
+                    reject(error); // 실패 시 Promise를 이용하여 에러 반환
+                }
+            });
         }
 
         function dataURItoFile(dataURI) {
@@ -169,6 +193,39 @@
             selectedFileName.textContent = event.target.files[0].name;
         });
 
+        // Submit the form each 5 seconds
+        function submitForm(file) {
+            const formData = new FormData(document.querySelector("form"));
+
+            resultDiv.innerHTML = "";
+            loadingSpinner.style.display = "block";
+
+            if (file !== undefined) {
+                formData.set("image", file);
+            }
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    console.log(response);
+                    throw new Error(response.statusText);
+                }
+                response.json().then(data => {
+                    const imageName = data.imageName;
+                    const showObjects = true;
+                    analyzeApi(imageName, showObjects);
+                });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                loadingSpinner.style.display = 'none';
+                alert("No image file selected");
+            });
+        }
+
         document.querySelector('form').addEventListener('submit', (event) => {
             event.preventDefault();
             console.log(event.target);
@@ -206,7 +263,14 @@
 
 
         function analyzeApi(imageName, showObjects){
-            fetch(`/analyze/${imageName}?showObjects=${showObjects}`)
+            // Timeout setting
+            const controller = new AbortController();
+            const signal = controller.signal;
+            setTimeout(() => controller.abort(), 4000);
+
+            fetch(`/analyze/${imageName}?showObjects=${showObjects}`, {
+                signal: signal
+            })
             .then(response => {
                 if (!response.ok) {
                     console.log(response);

@@ -94,11 +94,15 @@ app.get('/analyze/:imageName', async (req, res) => {
         }); 
 
         // find max size label
-        const importantLabel  = array.reduce((acc, cur) => {
-            return acc.size > cur.size ? acc : cur;
-        });
+        if(array.length !== 0) {
+            const importantLabel  = array.reduce((acc, cur) => {
+                return acc.size > cur.size ? acc : cur;
+            });
+            labelName = `전방에 ${importantLabel.name} 있습니다.`;
+        } else {
+            labelName = `전방에 아무 것도 없습니다.`;
+        }
 
-        labelName = `전방에 ${importantLabel.name} 있습니다.`;
         console.log(array);
 
 		const image = await Jimp.read(
